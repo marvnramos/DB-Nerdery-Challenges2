@@ -73,8 +73,12 @@ Now it's your turn to write SQL querys to achieve the following results:
 
 1. Count the total number of states in each country.
 
-```
-Your query here
+```sql
+SELECT c.name, count(s.name)
+FROM states AS s
+         INNER JOIN countries AS c
+                    ON s.country_id = c.id
+group by c.name
 ```
 
 <p align="center">
@@ -83,8 +87,10 @@ Your query here
 
 2. How many employees do not have supervisores.
 
-```
-Your query here
+```sql
+SELECT COUNT(*) AS employees_without_supervisors
+FROM employees
+WHERE supervisor_id IS NULL;
 ```
 
 <p align="center">
@@ -103,8 +109,13 @@ Your query here
 
 4. Three supervisors with the most amount of employees they are in charge.
 
-```
-Your query here
+```sql
+SELECT supervisor_id, COUNT(*) AS count
+FROM employees
+WHERE supervisor_id IS NOT NULL
+group by supervisor_id
+ORDER BY count DESC
+LIMIT 3
 ```
 
 <p align="center">
@@ -113,8 +124,13 @@ Your query here
 
 5. How many offices are in the state of Colorado (United States).
 
-```
-Your query here
+```sql
+SELECT count(*) AS list_of_office
+FROM offices AS o
+         INNER JOIN states AS s
+                    ON o.state_id = s.id
+WHERE s.name = 'Colorado'
+  AND s.country_id = (SELECT id FROM countries AS c WHERE name = 'United States');
 ```
 
 <p align="center">
@@ -123,8 +139,13 @@ Your query here
 
 6. The name of the office with its number of employees ordered in a desc.
 
-```
-Your query here
+```SQL
+SELECT o.name, COUNT(*) AS count
+FROM offices AS o
+         INNER JOIN employees AS e
+                    ON o.id = e.office_id
+GROUP BY o.name
+ORDER BY count DESC;
 ```
 
 <p align="center">
@@ -133,8 +154,25 @@ Your query here
 
 7. The office with more and less employees.
 
-```
-Your query here
+```sql
+WITH office_count AS (
+    SELECT o.address, COUNT(*) AS count
+    FROM offices AS o
+    INNER JOIN employees AS e ON o.id = e.office_id
+    GROUP BY o.address
+)
+
+(SELECT *
+ FROM office_count
+ WHERE count = (SELECT MAX(count) FROM office_count)
+ LIMIT 1)
+
+UNION ALL
+
+(SELECT *
+ FROM office_count
+ WHERE count = (SELECT MIN(count) FROM office_count)
+ LIMIT 1);
 ```
 
 <p align="center">
@@ -143,8 +181,29 @@ Your query here
 
 8. Show the uuid of the employee, first_name and lastname combined, email, job_title, the name of the office they belong to, the name of the country, the name of the state and the name of the boss (boss_name)
 
-```
-Your query here
+```sql
+WITH offices_by_countries_with_states AS (
+SELECT o.id AS office_id,
+       o.name AS office_name,
+       c.name AS country_name,
+       s.name AS state_name
+FROM offices AS o
+    INNER JOIN countries AS c ON o.country_id = c.id
+    LEFT JOIN states AS s ON o.state_id = s.id
+)
+
+SELECT e.uuid,
+       e.first_name || ' ' || e.last_name AS full_name,
+       e.email,
+       e.job_title,
+       o.office_name                             AS company,
+       o.country_name                     AS country,
+       o.state_name AS state,
+       e2.first_name                      AS boss_name
+FROM employees AS e
+         INNER JOIN offices_by_countries_with_states AS o ON e.office_id = o.office_id
+         LEFT JOIN employees AS e2 ON e.supervisor_id = e2.id
+WHERE e2.first_name IS NOT NULL;
 ```
 
 <p align="center">
