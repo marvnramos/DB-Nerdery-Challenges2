@@ -49,7 +49,7 @@ docker run --name nerdery-container -e POSTGRES_PASSWORD=password123 -p 5432:543
 ```
 docker exec -it -u postgres nerdery-container psql
 ```
-
+C:\Users\arago\OneDrive\Escritorio\nerdery-repos\DB-Nerdery-Challenges\src\dump.sql
 3. Create the database:
 
 ```
@@ -97,7 +97,7 @@ WHERE a.type = 'CURRENT_ACCOUNT'
 HAVING count(a.id) >= 2;
 ```
 <p align="center">
- <img src="src/my-results/result2.png" alt="result_1"/>
+ <img src="src/my-results/result2.png" alt="result_2"/>
 </p>
 
 3. List the top five accounts with more money.
@@ -109,87 +109,67 @@ ORDER BY mount DESC
 LIMIT 5;
 ```
 <p align="center">
- <img src="src/my-results/result3.png" alt="result_1"/>
+ <img src="src/my-results/result3.png" alt="result_3"/>
 </p>
 
 4. Get the three users with the most money after making movements.
 
 ```sql
-DO
-$$
-    DECLARE
-        account_balance RECORD;
-    BEGIN
-        FOR account_balance IN
-            WITH account_balances AS (SELECT u.name,
-                                             a.account_id,
-                                             a.mount        AS initial_mount,
-                                             COALESCE(SUM(
-                                                              CASE
-                                                                  WHEN m.type = 'TRANSFER' AND m.account_from = a.id
-                                                                      THEN -m.mount
-                                                                  WHEN m.type = 'TRANSFER' AND m.account_to = a.id
-                                                                      THEN m.mount
-                                                                  WHEN m.type = 'IN' AND m.account_from = a.id
-                                                                      THEN m.mount
-                                                                  WHEN m.type = 'OUT' AND m.account_from = a.id
-                                                                      THEN -m.mount
-                                                                  WHEN m.type = 'OTHER' AND m.account_from = a.id
-                                                                      THEN m.mount
-                                                                  ELSE 0
-                                                                  END
-                                                      ), 0) AS movement_total
-                                      FROM users AS u
-                                               INNER JOIN accounts AS a ON u.id = a.user_id
-                                               LEFT JOIN movements AS m ON a.id IN (m.account_from, m.account_to)
-                                      GROUP BY u.id, u.name, a.account_id, a.mount)
-            SELECT account_id,
-                   (initial_mount + movement_total) AS updated_balance
-            FROM account_balances
+    WITH account_balances AS (
+        SELECT
+            u.name,
+            a.account_id,
+            a.mount AS initial_mount,
+            COALESCE(SUM(
+                CASE
+                    WHEN m.type = 'TRANSFER' AND m.account_from = a.id THEN -m.mount
+                    WHEN m.type = 'TRANSFER' AND m.account_to = a.id THEN m.mount
+                    WHEN m.type = 'IN' AND m.account_from = a.id THEN m.mount
+                    WHEN m.type = 'OUT' AND m.account_from = a.id THEN -m.mount
+                    WHEN m.type = 'OTHER' AND m.account_from = a.id THEN m.mount
+                    ELSE 0
+                END
+            ), 0) AS movement_total
+        FROM users AS u
+        INNER JOIN accounts AS a ON u.id = a.user_id
+        LEFT JOIN movements AS m ON a.id IN (m.account_from, m.account_to)
+        GROUP BY u.id, u.name, a.account_id, a.mount
+    )
 
-            LOOP
-                UPDATE accounts
-                SET mount = account_balance.updated_balance
-                WHERE account_id = account_balance.account_id;
-            END LOOP;
-    END
-$$;
 
-SELECT u.name,
-       a.mount
-FROM users AS u
-         INNER JOIN accounts AS a
-                    ON U.id = a.user_id
-ORDER BY a.mount
-LIMIT 3;
+    SELECT
+        name,
+        account_id,
+        (initial_mount + movement_total) AS total_money
+    FROM account_balances
+    ORDER BY total_money DESC
+    LIMIT 3;
 ```
+
 <p align="center">
- <img src="src/my-results/result4.png" alt="result_1"/>
+ <img src="src/my-results/result4.png" alt="result_4"/>
 </p>
 
 5. In this part you need to create a transaction with the following steps:
 
     a. First, get the ammount for the account `3b79e403-c788-495a-a8ca-86ad7643afaf` and `fd244313-36e5-4a17-a27c-f8265bc46590` after all their movements.
-
     ```sql
-    SELECT id, mount
-    FROM accounts
-    WHERE accounts.id = '3b79e403-c788-495a-a8ca-86ad7643afaf' OR accounts.id = 'fd244313-36e5-4a17-a27c-f8265bc46590';
+     SELECT id, mount
+     FROM accounts
+     WHERE accounts.id = '3b79e403-c788-495a-a8ca-86ad7643afaf' OR accounts.id = 'fd244313-36e5-4a17-a27c-f8265bc46590';
     ```
 
     <p align="center">
-    <img src="src/my-results/result5A.png" alt="result_1"/>
+     <img src="src/my-results/result5A.png" alt="result_5"/>
     </p>
-    
-    b. Add a new movement with the information:
-        from: `3b79e403-c788-495a-a8ca-86ad7643afaf` make a transfer to `fd244313-36e5-4a17-a27c-f8265bc46590`
-        mount: 50.75
-        
+
+    b. Add a new movement with the information:from: `3b79e403-c788-495a-a8ca-86ad7643afaf` make a transfer to `fd244313-36e5-4a17-a27c-f8265bc46590` mount: 50.75
+
     ```sql
     DO
     $$
         DECLARE
-            movement RECORD;
+            movement               RECORD;
             updated_account_record RECORD;
         BEGIN
             INSERT INTO movements(id, type, account_from, account_to, mount)
@@ -200,75 +180,170 @@ LIMIT 3;
                     50.75)
             RETURNING * INTO movement;
 
+            IF (SELECT mount FROM accounts WHERE id = movement.account_from) < movement.mount THEN
+                RAISE INFO 'Invalid movement: Insufficient balance in account %. Rolling back.', movement.account_from;
+                ROLLBACK;
+                RETURN;
+            END IF;
+
             FOR updated_account_record IN
                 UPDATE accounts
-                SET mount = CASE
-                                WHEN id = movement.account_from THEN mount - movement.mount
-                                WHEN id = movement.account_to THEN mount + movement.mount
-                            END
-                WHERE id = movement.account_from
-                OR id = movement.account_to
-                RETURNING *
-            LOOP
-                IF updated_account_record.mount < 0 THEN
-                    RAISE NOTICE 'Invalid movement: Negative balance in account %. Rolling back.', updated_account_record.id;
-                    ROLLBACK;
-                    RETURN; 
-                END IF;
-            END LOOP;
+                    SET mount = CASE
+                                    WHEN id = movement.account_from THEN mount - movement.mount
+                                    WHEN id = movement.account_to THEN mount + movement.mount
+                        END
+                    WHERE id = movement.account_from
+                        OR id = movement.account_to
+                    RETURNING *
+                LOOP
+                    RAISE INFO 'Updated account %', updated_account_record.id;
+                END LOOP;
 
-            RAISE NOTICE 'Transaction successful: Movement ID % from % to % for %.', movement.id, movement.account_from, movement.account_to, movement.mount;
+            RAISE INFO 'Transaction successful';
             COMMIT;
-
-
         END
     $$;
     ```
+    <p align="center">
+     <img src="src/my-results/result5B.png" alt="result_5"/>
+    </p>
     c. Add a new movement with the information:
         from: `3b79e403-c788-495a-a8ca-86ad7643afaf` 
         type: OUT
         mount: 731823.56
-
-        * Note: if the account does not have enough money you need to reject this insert and make a rollback for the entire transaction
     
-    d. Put your answer here if the transaction fails(YES/NO):
-    ```
-        Your answer
+        * Note: if the account does not have enough money you need to reject this insert and make a rollback for the entire transaction
+    ```sql
+    DO
+    $$
+        DECLARE
+            record          RECORD;
+            accounts_record RECORD;
+        BEGIN
+            INSERT INTO movements(id, type, account_from, account_to, mount)
+            VALUES (gen_random_uuid(), 'OUT', '3b79e403-c788-495a-a8ca-86ad7643afaf', NULL, 731823.56)
+            RETURNING * INTO record;
+
+            UPDATE accounts
+            SET mount = mount - record.mount
+            WHERE id = record.account_from
+            RETURNING * INTO accounts_record;
+
+            IF accounts_record.mount < 0 THEN
+                RAISE NOTICE 'Invalid movement: Insufficient balance in account %. Rolling back.', record.account_from;
+                ROLLBACK;
+                RETURN;
+            END IF;
+
+            RAISE NOTICE 'Transaction successful: Movement ID %, Account ID %, New Balance %.',
+                record.id, accounts_record.id, accounts_record.mount;
+
+            COMMIT;
+        END
+    $$;
     ```
 
+    d. Put your answer here if the transaction fails(YES/NO):
+    failure:
+    <p align="center">
+     <img src="src/my-results/result5C.png" alt="result_5"/>
+    </p>
+    success:
+    <p align="center">
+     <img src="src/my-results/result5C2.png" alt="result_5"/>
+    </p>
     e. If the transaction fails, make the correction on step _c_ to avoid the failure:
-    ```
-        Your query
+
+    ```sql
+    INSERT INTO movements(id, type, account_from, account_to, mount)
+    VALUES (gen_random_uuid(), 'OUT', '3b79e403-c788-495a-a8ca-86ad7643afaf', NULL, 1000.05)
+    RETURNING * INTO record;
     ```
 
     f. Once the transaction is correct, make a commit
-    ```
-        Your query
+    ```sql
+    RAISE NOTICE 'Transaction successful: Movement ID %, Account ID %, New Balance %.',
+        record.id, accounts_record.id, accounts_record.mount;
+
+    COMMIT;
     ```
 
     e. How much money the account `fd244313-36e5-4a17-a27c-f8265bc46590` have:
+    ```sql
+    SELECT id, mount
+    FROM accounts
+    WHERE id = 'fd244313-36e5-4a17-a27c-f8265bc46590';
     ```
-        Your query
-    ```
-
+    <p align="center">
+     <img src="src/my-results/result5E.png" alt="result_5"/>
+    </p>
 
 6. All the movements and the user information with the account `3b79e403-c788-495a-a8ca-86ad7643afaf`
 
+```SQL
+WITH user_info AS (SELECT u.id                         AS user_id,
+                          u.name || ' ' || u.last_name AS fullname,
+                          u.email,
+                          u.date_joined,
+                          a.id                         AS account_id
+                   FROM users u
+                            INNER JOIN accounts a ON u.id = a.user_id
+                   WHERE a.id = '3b79e403-c788-495a-a8ca-86ad7643afaf')
+SELECT ui.fullname,
+       ui.email,
+       ui.date_joined,
+       m.type,
+       m.account_from,
+       m.account_to,
+       m.mount
+FROM user_info ui
+         LEFT JOIN movements m
+                   ON m.account_from = ui.account_id OR m.account_to = ui.account_id;
 ```
-Your query here
-```
+<p align="center">
+     <img src="src/my-results/result6.png" alt="result_6"/>
+</p>
 
 
 7. The name and email of the user with the highest money in all his/her accounts
 
-```
-Your query here
+```sql
+WITH highest_account_mount AS (SELECT user_id, MAX(mount) AS max_mount
+                               FROM accounts
+                               GROUP BY user_id
+                               ORDER BY max_mount DESC
+                               LIMIT 1)
+
+SELECT u.name || ' ' || u.last_name AS full_name,
+       u.email,
+       ham.max_mount                AS total_money
+FROM users AS u
+         INNER JOIN highest_account_mount AS ham ON u.id = ham.user_id;
 ```
 
+<p align="center">
+     <img src="src/my-results/result7.png" alt="result_7"/>
+</p>
 
 8. Show all the movements for the user `Kaden.Gusikowski@gmail.com` order by account type and created_at on the movements table
 
-```
-Your query here
+```sql
+WITH user_info AS (SELECT u.id, u.email, a.id AS account_id
+                   FROM users AS u
+                            INNER JOIN accounts AS a ON u.id = a.user_id
+                   WHERE u.email = 'Kaden.Gusikowski@gmail.com')
+SELECT DISTINCT ui.email,
+                m.id AS id_movement,
+                m.type,
+                m.account_from,
+                m.account_to,
+                m.mount,
+                m.created_at
+FROM movements m
+         INNER JOIN user_info ui ON m.account_from = ui.account_id OR m.account_to = ui.account_id
+ORDER BY m.type, m.created_at;
 ```
 
+<p align="center">
+     <img src="src/my-results/result8.png" alt="result_8"/>
+</p>
