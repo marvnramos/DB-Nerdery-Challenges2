@@ -115,34 +115,50 @@ LIMIT 5;
 4. Get the three users with the most money after making movements.
 
 ```sql
-    WITH account_balances AS (
-        SELECT
-            u.name,
-            a.account_id,
-            a.mount AS initial_mount,
-            COALESCE(SUM(
-                CASE
-                    WHEN m.type = 'TRANSFER' AND m.account_from = a.id THEN -m.mount
-                    WHEN m.type = 'TRANSFER' AND m.account_to = a.id THEN m.mount
-                    WHEN m.type = 'IN' AND m.account_from = a.id THEN m.mount
-                    WHEN m.type = 'OUT' AND m.account_from = a.id THEN -m.mount
-                    WHEN m.type = 'OTHER' AND m.account_from = a.id THEN m.mount
-                    ELSE 0
-                END
-            ), 0) AS movement_total
-        FROM users AS u
-        INNER JOIN accounts AS a ON u.id = a.user_id
-        LEFT JOIN movements AS m ON a.id IN (m.account_from, m.account_to)
-        GROUP BY u.id, u.name, a.account_id, a.mount
-    )
+    DO
+    $$
+        DECLARE
+            account_balance RECORD;
+        BEGIN
+            FOR account_balance IN
+                WITH account_balances AS (SELECT u.name,
+                                                a.account_id,
+                                                a.mount        AS initial_mount,
+                                                COALESCE(SUM(
+                                                                CASE
+                                                                    WHEN m.type = 'TRANSFER' AND m.account_from = a.id
+                                                                        THEN -m.mount
+                                                                    WHEN m.type = 'TRANSFER' AND m.account_to = a.id
+                                                                        THEN m.mount
+                                                                    WHEN m.type = 'IN' AND m.account_from = a.id
+                                                                        THEN m.mount
+                                                                    WHEN m.type = 'OUT' AND m.account_from = a.id
+                                                                        THEN -m.mount
+                                                                    WHEN m.type = 'OTHER' AND m.account_from = a.id
+                                                                        THEN m.mount
+                                                                    ELSE 0
+                                                                    END
+                                                        ), 0) AS movement_total
+                                        FROM users AS u
+                                                INNER JOIN accounts AS a ON u.id = a.user_id
+                                                LEFT JOIN movements AS m ON a.id IN (m.account_from, m.account_to)
+                                        GROUP BY u.id, u.name, a.account_id, a.mount)
+                SELECT account_id,
+                    (initial_mount + movement_total) AS update_balance
+                FROM account_balances
 
+                LOOP
+                    UPDATE accounts
+                    SET mount = account_balance.update_balance
+                    WHERE account_id = account_balance.account_id;
+                END LOOP;
+        END
+    $$;
 
-    SELECT
-        name,
-        account_id,
-        (initial_mount + movement_total) AS total_money
-    FROM account_balances
-    ORDER BY total_money DESC
+    SELECT u.name || ' ' || u.last_name AS full_name, a.mount
+    FROM users AS u
+    INNER JOIN accounts AS a ON u.id = a.user_id
+    ORDER BY a.mount DESC
     LIMIT 3;
 ```
 
