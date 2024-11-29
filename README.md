@@ -99,8 +99,16 @@ WHERE supervisor_id IS NULL;
 
 3. List the top five offices address with the most amount of employees, order the result by country and display a column with a counter.
 
-```
-Your query here
+```SQL
+SELECT c.name,
+       o.address,
+       COUNT(e.id) AS count
+FROM offices AS o
+LEFT JOIN employees AS e ON o.id = e.office_id
+INNER JOIN countries AS c ON o.country_id = c.id
+group by c.name, o.address
+ORDER BY count DESC, c.name
+LIMIT 5;
 ```
 
 <p align="center">
@@ -167,7 +175,7 @@ WITH office_count AS (
  WHERE count = (SELECT MAX(count) FROM office_count)
  LIMIT 1)
 
-UNION ALL
+UNION
 
 (SELECT *
  FROM office_count
