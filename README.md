@@ -144,12 +144,12 @@ LIMIT 5;
                                                 LEFT JOIN movements AS m ON a.id IN (m.account_from, m.account_to)
                                         GROUP BY u.id, u.name, a.account_id, a.mount)
                 SELECT account_id,
-                    (initial_mount + movement_total) AS update_balance
+                    (initial_mount + movement_total) AS updated_balance
                 FROM account_balances
 
                 LOOP
                     UPDATE accounts
-                    SET mount = account_balance.update_balance
+                    SET mount = account_balance.updated_balance
                     WHERE account_id = account_balance.account_id;
                 END LOOP;
         END
