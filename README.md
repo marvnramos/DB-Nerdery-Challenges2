@@ -43,7 +43,7 @@ Open your terminal and run the follows commands:
 ```
 docker run --name nerdery-container -e POSTGRES_PASSWORD=password123 -p 5432:5432 -d --rm postgres:13.0
 ```
-
+C:\Users\arago\OneDrive\Escritorio\nerdery-repos\DB-Nerdery-Challenges2\src\dump.sql
 2. Now, we access the container:
 
 ```
@@ -74,11 +74,14 @@ Now it's your turn to write SQL querys to achieve the following results:
 1. Count the total number of states in each country.
 
 ```sql
-SELECT c.name, count(s.name)
-FROM states AS s
-         INNER JOIN countries AS c
-                    ON s.country_id = c.id
-group by c.name
+SELECT
+  c.name AS country,
+  count(s.name) AS states_count
+FROM
+  states AS s
+  INNER JOIN countries AS c ON s.country_id = c.id
+group by
+  country;
 ```
 
 <p align="center">
@@ -100,15 +103,23 @@ WHERE supervisor_id IS NULL;
 3. List the top five offices address with the most amount of employees, order the result by country and display a column with a counter.
 
 ```SQL
-SELECT c.name,
-       o.address,
-       COUNT(e.id) AS count
-FROM offices AS o
-LEFT JOIN employees AS e ON o.id = e.office_id
-INNER JOIN countries AS c ON o.country_id = c.id
-group by c.name, o.address
-ORDER BY count DESC, c.name
-LIMIT 5;
+SELECT 
+  c.name AS country, 
+  o.address AS office_address, 
+  COUNT(e.id) AS total_employees 
+FROM 
+  offices AS o 
+  LEFT JOIN employees AS e ON o.id = e.office_id 
+  INNER JOIN countries AS c ON o.country_id = c.id 
+group by 
+  country, 
+  office_address
+ORDER BY 
+  total_employees DESC, 
+  country
+LIMIT 
+  5;
+
 ```
 
 <p align="center">
@@ -118,12 +129,20 @@ LIMIT 5;
 4. Three supervisors with the most amount of employees they are in charge.
 
 ```sql
-SELECT supervisor_id, COUNT(*) AS count
-FROM employees
-WHERE supervisor_id IS NOT NULL
-group by supervisor_id
-ORDER BY count DESC
-LIMIT 3
+SELECT 
+  supervisor_id, 
+  COUNT(*) AS employees_in_charge 
+FROM 
+  employees 
+WHERE 
+  supervisor_id IS NOT NULL 
+group by 
+  supervisor_id 
+ORDER BY 
+  employees_in_charge DESC 
+LIMIT 
+  3;
+
 ```
 
 <p align="center">
@@ -133,12 +152,15 @@ LIMIT 3
 5. How many offices are in the state of Colorado (United States).
 
 ```sql
-SELECT count(*) AS list_of_office
-FROM offices AS o
-         INNER JOIN states AS s
-                    ON o.state_id = s.id
-WHERE s.name = 'Colorado'
-  AND s.country_id = (SELECT id FROM countries AS c WHERE name = 'United States');
+SELECT 
+  count(*) AS list_of_office 
+FROM 
+  offices AS o 
+  INNER JOIN states AS s ON o.state_id = s.id 
+  INNER JOIN countries AS c ON o.country_id = c.id 
+WHERE 
+  s.name = 'Colorado' 
+  AND c.name = 'United States';
 ```
 
 <p align="center">
@@ -148,12 +170,17 @@ WHERE s.name = 'Colorado'
 6. The name of the office with its number of employees ordered in a desc.
 
 ```SQL
-SELECT o.name, COUNT(*) AS count
-FROM offices AS o
-         INNER JOIN employees AS e
-                    ON o.id = e.office_id
-GROUP BY o.name
-ORDER BY count DESC;
+SELECT
+  o.name AS office_name,
+  COUNT(*) AS employees_count
+FROM
+  offices AS o
+  INNER JOIN employees AS e ON o.id = e.office_id
+GROUP BY
+  office_name
+ORDER BY
+  employees_count DESC;
+
 ```
 
 <p align="center">
@@ -164,23 +191,35 @@ ORDER BY count DESC;
 
 ```sql
 WITH office_count AS (
-    SELECT o.address, COUNT(*) AS count
-    FROM offices AS o
+  SELECT 
+    o.address AS office_address,
+    COUNT(*) AS total_employees
+  FROM
+    offices AS o
     INNER JOIN employees AS e ON o.id = e.office_id
-    GROUP BY o.address
-)
-
-(SELECT *
- FROM office_count
- WHERE count = (SELECT MAX(count) FROM office_count)
- LIMIT 1)
-
-UNION
-
-(SELECT *
- FROM office_count
- WHERE count = (SELECT MIN(count) FROM office_count)
- LIMIT 1);
+  GROUP BY
+    office_address
+) (
+  SELECT
+    *
+  FROM 
+    office_count 
+  ORDER BY 
+    total_employees DESC
+  LIMIT 
+    1
+) 
+UNION 
+  (
+    SELECT 
+      * 
+    FROM 
+      office_count 
+    ORDER BY 
+      total_employees
+    LIMIT 
+      1
+  );
 ```
 
 <p align="center">
@@ -191,27 +230,31 @@ UNION
 
 ```sql
 WITH offices_by_countries_with_states AS (
-SELECT o.id AS office_id,
-       o.name AS office_name,
-       c.name AS country_name,
-       s.name AS state_name
-FROM offices AS o
-    INNER JOIN countries AS c ON o.country_id = c.id
+  SELECT 
+    o.id AS office_id, 
+    o.name AS office_name, 
+    c.name AS country_name, 
+    s.name AS state_name 
+  FROM 
+    offices AS o 
+    INNER JOIN countries AS c ON o.country_id = c.id 
     LEFT JOIN states AS s ON o.state_id = s.id
-)
-
-SELECT e.uuid,
-       e.first_name || ' ' || e.last_name AS full_name,
-       e.email,
-       e.job_title,
-       o.office_name                             AS company,
-       o.country_name                     AS country,
-       o.state_name AS state,
-       e2.first_name                      AS boss_name
-FROM employees AS e
-         INNER JOIN offices_by_countries_with_states AS o ON e.office_id = o.office_id
-         LEFT JOIN employees AS e2 ON e.supervisor_id = e2.id
-WHERE e2.first_name IS NOT NULL;
+) 
+SELECT 
+  e.uuid, 
+  CONCAT(e.first_name, ' ', e.last_name) AS full_name, 
+  e.email, 
+  e.job_title, 
+  o.office_name AS company, 
+  o.country_name AS country, 
+  o.state_name AS state, 
+  supervisors.first_name AS boss_name 
+FROM 
+  employees AS e 
+  INNER JOIN offices_by_countries_with_states AS o ON e.office_id = o.office_id 
+  LEFT JOIN employees AS supervisors ON e.supervisor_id = supervisors.id 
+WHERE 
+  supervisors.first_name IS NOT NULL;
 ```
 
 <p align="center">
